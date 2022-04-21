@@ -1,0 +1,205 @@
+version: '3.9'
+
+#Docker Networks
+networks:
+  laravel:
+    driver: bridge
+
+#Volumes
+volumes:
+  dbdata:
+    driver: local
+
+# Workflow
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: ./compose/nginx/Dockerfile
+    container_name: nginx
+    tty: true
+    ports:
+      - '8080:80'
+      # Port for xdebug (ensure this matches the remote_port in the xdebug.ini)
+      - '9001:9001'
+    volumes:
+      - ./source:/var/www/html:delegated
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    depends_on:
+      - php
+      - mysql
+    networks:
+      - laravel
+
+  mysql:
+    build: 
+      context: .
+      dockerfile: ./compose/mysql/Dockerfile
+    image: mysql:5.7.35
+    container_name: mysql
+    restart: unless-stopped
+    tty: true
+    ports:
+      - '3306:3306'
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    volumes:
+      - ./compose/mysql/my.cnf:/etc/mysql/my.cnf
+      - ./compose/mysql/dbdata:/var/lib/mysql/
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      - laravel
+
+  redis:
+    image: 'redis:alpine'
+    container_name: redis
+    restart: unless-stopped
+    hostname: redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - ./compose/redis/dbdata:/var/lib/redis
+      - ./compose/redis/redis-config:/usr/local/etc/redis/redis.conf
+    networks:
+      - laravel
+    
+  redis-commander:
+    container_name: redis-commander
+    hostname: redis-commander
+    image: rediscommander/redis-commander:latest
+    restart: always
+    environment:
+      - REDIS_HOSTS=redis
+    ports:
+      - "8083:8081"
+    networks:
+      - laravel
+
+  mongodb:
+    image: mongo:5.0
+    ports:
+      - 27017:27017
+    container_name: mongodb
+    volumes:
+      - ./compose/mongodb/dbdata:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: ${DB_DATABASE_MONGO}
+      MONGO_INITDB_ROOT_USERNAME: ${DB_USERNAME_MONGO}
+      MONGO_INITDB_ROOT_PASSWORD: ${DB_PASSWORD_MONGO}
+    networks:
+      - laravel
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo-express
+    ports:
+      - 8082:8081
+    environment:
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin
+      ME_CONFIG_MONGODB_PORT: ${DB_USERNAME_MONGO}
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${DB_USERNAME_MONGO}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${DB_PASSWORD_MONGO}
+      ME_CONFIG_MONGODB_SERVER: mongodb
+    links:
+      - mongodb
+    restart: always
+    depends_on:
+      - mongodb
+    networks:
+      - laravel
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_ARBITRARY: 1
+      UPLOAD_LIMIT: 024M
+      MEMORY_LIMIT: 1024M
+      MAX_EXECUTION_TIME: 300
+    restart: always
+    depends_on:
+      - mysql
+    ports:
+      - '8081:80'
+    volumes:
+      - /sessions
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    networks:
+      - laravel
+    links:
+      - mysql
+
+  php:
+    build:
+      context: .
+      dockerfile: ./compose/php/Dockerfile
+    container_name: php
+    tty: true
+    volumes:
+      - ./source:/var/www/html:delegated
+      # Enable xdebug
+      - ./compose/php/xdebug.ini:/usr/local/etc/php/conf.d/docker-php-ext-xdebug.ini
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    ports:
+      - '9000:9000'
+    networks:
+      - laravel
+  npm:
+    image: node:latest
+    container_name: npm
+    tty: true
+    volumes:
+      - ./source:/var/www/html
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    working_dir: /var/www/html
+    entrypoint: ['npm']
+
+  artisan:
+    build:
+      context: .
+      dockerfile: ./compose/php/Dockerfile
+    container_name: artisan
+    tty: true
+    volumes:
+      - ./source:/var/www/html:delegated
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    depends_on:
+      - mysql
+    working_dir: /var/www/html
+    user: laravel
+    entrypoint: ['php', '/var/www/html/artisan']
+    networks:
+      - laravel
+
+  composer:
+    build:
+      context: .
+      dockerfile: ./compose/php/composer/Dockerfile
+    container_name: composer
+    tty: true
+    volumes:
+      - ./source:/var/www/html
+      - "/etc/timezone:/etc/timezone:ro"
+      - "/etc/localtime:/etc/localtime:ro"
+    working_dir: /var/www/html
+    depends_on:
+      - php
+    user: laravel
+    networks:
+      - laravel
+    entrypoint: ['composer', '--ignore-platform-reqs']
