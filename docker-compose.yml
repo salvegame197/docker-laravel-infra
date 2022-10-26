@@ -126,7 +126,7 @@ services:
       PMA_HOST: mysql
       PMA_PORT: 3306
       PMA_ARBITRARY: 1
-      UPLOAD_LIMIT: 024M
+      UPLOAD_LIMIT: 512M
       MEMORY_LIMIT: 1024M
       MAX_EXECUTION_TIME: 300
     restart: always
