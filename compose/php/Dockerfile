@@ -36,7 +36,8 @@ RUN apk add curl-dev openssl openssl-dev
 RUN apk --no-cache add pcre-dev ${PHPIZE_DEPS} \ 
   && pecl install mongodb \
   && docker-php-ext-enable mongodb \
-  && apk del pcre-dev ${PHPIZE_DEPS}
+  && apk del pcre-dev ${PHPIZE_DEPS} \
+  && docker-php-ext-install exif
 
 RUN pecl config-set php_ini /etc/php.ini
 
